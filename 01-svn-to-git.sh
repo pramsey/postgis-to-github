@@ -6,9 +6,9 @@ set -e
 # Load config info
 source 00-config.sh
 
-if [ ! -d $workdir ]; then
-    mkdir -p $workdir
-    pushd $workdir
+if [ ! -d $work_dir ]; then
+    mkdir -p $work_dir
+    pushd $work_dir
 fi
 
 #
@@ -65,6 +65,8 @@ done
 echo "Dropping 'trunk' branch in favor of 'master'"
 git branch -d trunk
 
+exit
+
 # find all files that are large
 # git rev-list --objects --all | sort -k 2 > allfileshas.txt;git gc && git verify-pack -v .git/objects/pack/pack-*.idx | egrep "^\w+ blob\W+[0-9]+ [0-9]+ [0-9]+$" | sort -k 3 -n -r > bigobjects.txt
 # sort by largest
@@ -79,6 +81,9 @@ git branch -d trunk
 wget https://github.com/poseidix/TRAC-SVN-to-GIT-migration/blob/master/createLookupTable.sh
 chmod 755 createLookupTable.sh
 ./createLookupTable.sh > $workdir/rev-lookuptable.txt
+
+#?????
+# git svn log --show-commit --oneline
 
 #
 # Add the Github repository as an origin
