@@ -24,9 +24,10 @@ echo "Cloning $svn_url into git repository ./$git_dir"
 git svn clone $svn_url \
     --stdlayout \
     --authors-file=users.txt \
-    --no-metadata \
-    --prefix "" \
     -s $git_dir
+
+#--no-metadata \
+#--prefix "" \
 
 #
 # Enter repo
@@ -65,6 +66,57 @@ done
 echo "Dropping 'trunk' branch in favor of 'master'"
 git branch -d trunk
 
+#
+# Drop some specific postgis branches
+#
+git branch -D gSoC2007
+git branch -D gSoC2007_raster
+git branch -D pgis_0_9_0
+git branch -D pgis_1_0
+git branch -D refractions
+
+#
+# Drop some tags that already exist with nicer names
+#
+git tag -d pgis_0_5_0
+git tag -d pgis_0_6_0
+git tag -d pgis_0_6_1
+git tag -d pgis_0_6_2
+git tag -d pgis_0_7_0
+git tag -d pgis_0_7_1
+git tag -d pgis_0_7_2
+git tag -d pgis_0_7_3
+git tag -d pgis_0_7_4
+git tag -d pgis_0_7_5
+git tag -d pgis_0_8_0
+git tag -d pgis_0_8_1
+git tag -d pgis_0_8_2
+git tag -d pgis_0_9_1
+git tag -d pgis_0_9_2
+git tag -d pgis_1_0_0
+git tag -d pgis_1_0_0RC1
+git tag -d pgis_1_0_0RC2
+git tag -d pgis_1_0_0RC3
+git tag -d pgis_1_0_0RC4
+git tag -d pgis_1_0_0RC5
+git tag -d pgis_1_0_0RC6
+git tag -d pgis_1_0_1
+git tag -d pgis_1_0_2
+git tag -d pgis_1_0_3
+git tag -d pgis_1_0_4
+git tag -d pgis_1_0_5
+git tag -d pgis_1_0_6
+git tag -d pgis_1_1_0
+git tag -d pgis_1_1_1
+git tag -d pgis_1_1_2
+git tag -d pgis_1_1_3
+git tag -d postgis-0_7
+git tag -d postgis_0_5
+git tag -d pre_1_0_2_rc1
+git tag -d pre_1_0_2_unionTest
+git tag -d start
+
+
 # find all files that are large
 # git rev-list --objects --all | sort -k 2 > allfileshas.txt;git gc && git verify-pack -v .git/objects/pack/pack-*.idx | egrep "^\w+ blob\W+[0-9]+ [0-9]+ [0-9]+$" | sort -k 3 -n -r > bigobjects.txt
 # sort by largest
@@ -79,6 +131,9 @@ git branch -d trunk
 wget https://github.com/poseidix/TRAC-SVN-to-GIT-migration/blob/master/createLookupTable.sh
 chmod 755 createLookupTable.sh
 ./createLookupTable.sh > $workdir/rev-lookuptable.txt
+
+#?????
+# git svn log --show-commit --oneline
 
 #
 # Add the Github repository as an origin
