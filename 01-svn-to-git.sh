@@ -23,11 +23,11 @@ curl $svn_url/trunk/authors.git > users.txt
 echo "Cloning $svn_url into git repository ./$git_dir"
 git svn clone $svn_url \
     --stdlayout \
+	--prefix "" \
     --authors-file=users.txt \
     -s $git_dir
 
 #--no-metadata \
-#--prefix "" \
 
 #
 # Enter repo
@@ -128,13 +128,9 @@ exit
 
 #
 # Create revision-hash lookup table
+# https://github.com/poseidix/TRAC-SVN-to-GIT-migration/blob/master/createLookupTable.sh
 #
-wget https://github.com/poseidix/TRAC-SVN-to-GIT-migration/blob/master/createLookupTable.sh
-chmod 755 createLookupTable.sh
-./createLookupTable.sh > $workdir/rev-lookuptable.txt
-
-#?????
-# git svn log --show-commit --oneline
+../../scripts/createLookupTable.sh > ../rev-lookup.txt
 
 #
 # Add the Github repository as an origin
