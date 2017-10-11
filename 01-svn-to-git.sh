@@ -5,6 +5,7 @@ set -e
 
 # Load config info
 source 00-config.sh
+script_dir=$PWD
 
 if [ ! -d $work_dir ]; then
     mkdir -p $work_dir
@@ -116,7 +117,6 @@ git tag -d pre_1_0_2_rc1
 git tag -d pre_1_0_2_unionTest
 git tag -d start
 
-exit
 
 # find all files that are large
 # git rev-list --objects --all | sort -k 2 > allfileshas.txt;git gc && git verify-pack -v .git/objects/pack/pack-*.idx | egrep "^\w+ blob\W+[0-9]+ [0-9]+ [0-9]+$" | sort -k 3 -n -r > bigobjects.txt
@@ -130,7 +130,9 @@ exit
 # Create revision-hash lookup table
 # https://github.com/poseidix/TRAC-SVN-to-GIT-migration/blob/master/createLookupTable.sh
 #
-../../scripts/createLookupTable.sh > ../rev-lookup.txt
+$script_dir/scripts/createLookupTable.sh > $work_dir/rev-lookup.txt
+
+exit
 
 #
 # Add the Github repository as an origin
