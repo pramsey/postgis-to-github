@@ -6,9 +6,9 @@ set -e
 # Load config info
 source 00-config.sh
 
-if [ ! -d $workdir ]; then
-    mkdir -p $workdir
-    pushd $workdir
+if [ ! -d $work_dir ]; then
+    mkdir -p $work_dir
+    pushd $work_dir
 fi
 
 #
@@ -116,6 +116,7 @@ git tag -d pre_1_0_2_rc1
 git tag -d pre_1_0_2_unionTest
 git tag -d start
 
+exit
 
 # find all files that are large
 # git rev-list --objects --all | sort -k 2 > allfileshas.txt;git gc && git verify-pack -v .git/objects/pack/pack-*.idx | egrep "^\w+ blob\W+[0-9]+ [0-9]+ [0-9]+$" | sort -k 3 -n -r > bigobjects.txt
