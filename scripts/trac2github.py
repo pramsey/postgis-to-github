@@ -21,6 +21,7 @@ from psycopg2.extensions import register_type
 github_user = "pramsey"
 github_password = os.environ["GITHUB_TOKEN"]
 github_repo = "postgistest"
+github_default_label_color = 'eeeeee'
 
 # svnuser:githubuser
 usermap = {
@@ -53,41 +54,39 @@ usermap = {
 # from trac field/value to github label name
 traclabelmap = {
     "type":{
-        "patch":"patch",
-        "enhancement":"enhancement",
-        "task":"task",
-        "defect":"defect"
+        "patch":"Patch",
+        "enhancement":"Enhancement",
+        "task":"Task",
+        "defect":"Defect"
         },
     "component":{
-        "raster":"raster",
-        "topology":"topology",
-        "build/upgrade/install":"build/install",
-        "sfcgal":"sfcgal",
-        "management":"management",
-        "buildbots":"buildbots",
-        "java":"java",
-        "postgis":"postgis",
-        "website":"website",
-        "documentation":"documentation",
+        "raster":"Raster",
+        "topology":"Topology",
+        "build/upgrade/install":"Build/Install",
+        "sfcgal":"SFCGAL",
+        "management":"Management",
+        "buildbots":"BuildBots",
+        "java":"Java",
+        "postgis":"Core",
+        "website":"Website",
+        "documentation":"Documentation",
         "liblwgeom":"liblwgeom",
-        "loader/dumper":"loader/dumper",
-        "pagc_address_parser":"pagc address parser",
-        "tiger geocoder":"tiger geocoder"
+        "loader/dumper":"Loader/Dumper",
+        "pagc_address_parser":"Address Parser",
+        "tiger geocoder":"Tiger Geocoder"
         },
     "priority":{
-        "priority=blocker":"priority:blocker",
-        "critical":"high",
-        "high":"high",
-        "medium":"low",
-        "low":"low"
+        "blocker":"Blocker;ff0000",
+        "critical":"High Priority;ee8888",
+        "high":"High Priority;ee6666"
         },
     "resolution":{
-        "wontfix":"wontfix",
-        "duplicate":"duplicate",
-        "invalid":"invalid",
-        "worksforme":"worksforme"
+        "wontfix":"Won't Fix",
+        "duplicate":"Duplicate",
+        "invalid":"Invalid",
+        "worksforme":"Works For Me"
         }
-}
+    }
 
     
 revmapfile = "/Users/pramsey/Code/postgis-to-github/work/rev-lookup.txt"
@@ -135,14 +134,56 @@ def main():
     
     # For each ticket
     # 
-    # for ticket in get_tickets(conn, first_ticket=1800, max_tickets=10):
+    # for ticket in get_trac_tickets(conn, first_ticket=1800, max_tickets=10):
     #     print "======== %s" % ticket.get("id")
     #     print ticket.get("summary")
     #     print "----"
     #     print md_from_trac(ticket.get("description"))
     #     print "----"
-    #     for comment in get_comments(conn, ticket.get("id")):
+    #     for comment in get_trac_comments(conn, ticket.get("id")):
     #         print md_from_trac(comment.get("comment"))
+
+
+###############################################################################
+
+def trac_label_get_github_label(trac_key, trac_value, repo):
+    
+    # Do we have a configuration for this particular
+    # trac key/value combination?
+    if not traclabelmap.get(trac_key):
+        return None
+    else if not traclabelmap[trac_key].get(trac_value):
+        return None
+    
+    labelcolor = traclabelmap[trac_key][trac_value].split(';')
+    label = labelcolor[0]
+    if labelcolor[1]:
+        color = labelcolor[1]
+    else:
+        color = github_default_label_color
+    
+    # Yes, we already have this label set up, 
+    # so just return the github label object.
+    if labelmap.get(label):
+        return labelmap.get(label)
+        
+    # We have a configuration but it doesn't 
+    # exist in github yet, so create it there.
+    return repo.create_label(label, color)
+
+
+def trac_milestone_get_github_milestone(trac_milestone, conn, repo):
+    if milestonemap.get(trac_milestone):
+        return milestonemap.get(trac_milestone)
+        
+    ms = get_trac_milestone(conn, trac_milestone)
+    if not ms:
+        raise Exception("milestone '%s' not found in trac database" % trac_milestone)
+    
+    if ms["due"]:
+        return repo.create_milestone(title=ms["name"], state=ms["state"], due_on=ms["due"])
+    else:
+        return repo.create_milestone(title=ms["name"], state=ms["state"])
 
 
 ###############################################################################
@@ -247,10 +288,12 @@ def get_pgsql_connection(config):
 
 ###############################################################################
 
-def get_tickets(conn, first_ticket=None, max_tickets=None):
-    sql = """SELECT id, type, owner, reporter, milestone, status, resolution,
-                summary, description, time / 1000000 as posixtime, 
-                changetime / 1000000 as modifiedtime
+def get_trac_tickets(conn, first_ticket=None, max_tickets=None):
+    sql = """SELECT id, type, owner, reporter, milestone, 
+                status, resolution,
+                summary, description, 
+                to_timestamp(time / 1000000) as posixtime, 
+                to_timestamp(changetime / 1000000) as modifiedtime
             FROM ticket
             WHERE id >= %s
             ORDER BY id ASC
@@ -267,23 +310,35 @@ def get_tickets(conn, first_ticket=None, max_tickets=None):
 
 ###############################################################################
 
-def get_comments(conn, ticket):
-    sql = """SELECT ticket, time / 1000000 as posixtime, author, newvalue AS comment
+def get_trac_comments(conn, ticket):
+    sql = """SELECT ticket, 
+                case when time > 0 then to_timestamp(time / 1000000) else NULL end as posixtime, 
+                author, newvalue AS comment
             FROM ticket_change
             WHERE field = 'comment'
             AND newvalue <> ''
             AND ticket = %s
             ORDER BY ticket ASC, time ASC
             """
-            
     with conn.cursor() as cur:
         cur.execute(sql, (ticket,))
         for r in cur:
             yield r
 
+def get_trac_milestone(conn, milestone):
+    sql = """SELECT name,
+            CASE WHEN due = 0 THEN NULL ELSE to_timestamp(due / 1000000) END AS due,
+            CASE WHEN completed > 0 THEN 'closed' ELSE 'open' END AS state
+            FROM milestone
+            WHERE name = %s
+            """
+    with conn.cursor() as cur:
+        cur.execute(sql, (milestone,))
+        return cur.fetchone()
+
 ###############################################################################
 
-def get_attachments(conn, ticket):
+def get_trac_attachments(conn, ticket):
     sql = """SELECT id, filename, time / 1000000 as posixtime, author 
             FROM attachment
             WHERE id = %s
