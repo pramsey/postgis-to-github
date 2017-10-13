@@ -3,6 +3,4 @@ git_dir=postgis
 
 svn_url=https://svn.osgeo.org/postgis
 
-github_repo=pramsey/postgistest
-github_remote=sss
-
+github_remote=git@github.com:pramsey/postgistest.git
