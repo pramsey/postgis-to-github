@@ -6,6 +6,7 @@ import github
 import logging
 import argparse
 from string import replace
+import os
 from os.path import basename, splitext, join, isfile
 import StringIO
 import datetime
@@ -18,7 +19,7 @@ from psycopg2.extensions import register_type
 ###############################################################################
 
 github_user = "pramsey"
-github_password = "817a6f0ceec17f15dd5d53e02dbca3ba7994e3b4"
+github_password = os.environ["GITHUB_TOKEN"]
 github_repo = "postgistest"
 
 # svnuser:githubuser
