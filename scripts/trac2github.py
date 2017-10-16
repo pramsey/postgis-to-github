@@ -73,9 +73,9 @@ usermap = {
 traclabelmap = {
     "type":{
         "patch":"Patch",
-        "enhancement":"enhancement",
+        "enhancement":"Enhancement",
         "task":"Task",
-        "defect":"bug"
+        "defect":"Bug"
         },
     "component":{
         "raster":"Raster",
@@ -98,10 +98,10 @@ traclabelmap = {
         "high":"High Priority;ee6666"
         },
     "resolution":{
-        "wontfix":"WontFix",
-        "duplicate":"duplicate",
-        "invalid":"invalid",
-        "worksforme":"WorksForMe"
+        "wontfix":"Won't Fix",
+        "duplicate":"Duplicate",
+        "invalid":"Invalid",
+        "worksforme":"Works For Me"
         }
     }
 
@@ -212,7 +212,7 @@ def get_issues(conn, repo, first_id=1, limit=1):
 
         # Log result
         logger.info("Formatted Ticket/Issue #%(id)s: %(summary)s" % ticket)
-        logger.debug(pprint.pformat(gh))
+        logger.debug(json.dumps(gh))
         yield gh
                 
 
@@ -275,7 +275,7 @@ def github_create_issue(issue_dict):
         "Accept": "application/vnd.github.golden-comet-preview+json"
         }
     r = requests.post(url, data=json.dumps(issue_dict), headers=headers)
-    logger.debug(pprint.pformat(r.text))
+    logger.debug(r.text)
     return json.loads(r.text)
     
 ###############################################################################
@@ -307,23 +307,26 @@ def trac_label_get_github_label(trac_key, trac_value, repo):
     elif not traclabelmap[trac_key].get(trac_value):
         return None
     
-    labelcolor = traclabelmap[trac_key][trac_value].split(';')
-    label = labelcolor[0]
-    if len(labelcolor) > 1:
-        color = labelcolor[1]
+    label_and_color = traclabelmap[trac_key][trac_value].split(';')
+    label = label_and_color[0]
+    if len(label_and_color) > 1:
+        color = label_and_color[1]
     else:
         color = github_default_label_color
     
     # Yes, we already have this label set up, 
     # so just return the github label object.
-    if labelmap.get(label) or labelmap.get(label.lower()):
+    if labelmap.get(label):
         return labelmap.get(label)
+    if labelmap.get(label.lower()):
+        return labelmap.get(label.lower())
+    
     
     logger.info("Creating new github label: %s" % label)
     # We have a configuration but it doesn't 
     # exist in github yet, so create it there.
     gh_label = repo.create_label(label, color)
-    labelmap[label] = gh_label
+    labelmap[label.lower()] = gh_label
     return gh_label
 
 
@@ -374,7 +377,7 @@ def load_labelmap(repo):
     l = dict()
     for label in repo.get_labels():
         logger.debug('found label "%s"', label.name)
-        l[label.name] = label
+        l[label.name.lower()] = label
     logger.info('found %d labels', len(l))
     return l
 
