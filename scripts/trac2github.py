@@ -83,10 +83,10 @@ traclabelmap = {
         "high":"High Priority;ee6666"
         },
     "resolution":{
-        "wontfix":"Won't Fix",
+        "wontfix":"WontFix",
         "duplicate":"duplicate",
-        "invalid":"Invalid",
-        "worksforme":"Works For Me"
+        "invalid":"invalid",
+        "worksforme":"WorksForMe"
         }
     }
 
@@ -103,7 +103,7 @@ db = {
     }
 
 # For example
-# https://trac.osgeo.org/postgis/attachment/ticket/1666/make_dist_pre2quiet.2.patch
+# https://trac.osgeo.org/postgis/raw-attachment/ticket/1666/make_dist_pre2quiet.2.patch
 attachment_url_tmpl = "https://trac.osgeo.org/postgis/raw-attachment/ticket/%(ticket)s/%(filename)s"
 ticket_url_prefix = "https://trac.osgeo.org/postgis/ticket/"
 
@@ -132,28 +132,22 @@ def main():
     revmap = load_revmap(revmapfile)
     labelmap = load_labelmap(repo)
     milestonemap = load_milestonemap(repo)
-    # validate_usermap(hub)
+    validate_usermap(hub)
     
-    for issue in get_issues(conn, repo, first_id=1, limit=None):
+    for issue in get_issues(conn, repo, first_id=1000, limit=1):
+        # Only turn this on when you're ready to rock
+        # In order to maintain exact ticket/issue number correspondance
+        # you cannot create the same issue twice, ever. Otherwise 
+        # delete the repo and start again, sorry.
         r = github_create_issue(issue)
         logger.info("id:%(id)s status:%(status)s url:%(url)s" % r)
         
         
-    # For each ticket
-    # 
-    # for ticket in get_issues(conn, first_ticket=1800, max_tickets=10):
-    #     print "======== %s" % ticket.get("id")
-    #     print ticket.get("summary")
-    #     print "----"
-    #     print md_from_trac(ticket.get("description"))
-    #     print "----"
-    #     for comment in get_trac_comments(conn, ticket.get("id")):
-    #         print md_from_trac(comment.get("comment"))
-
-
+        
+        
 ###############################################################################
 
-def get_issues(conn, repo, first_id=1, limit=10):
+def get_issues(conn, repo, first_id=1, limit=1):
     
     for ticket in get_trac_tickets(conn, first_ticket=first_id, max_tickets=limit):
         issue = {}
@@ -161,10 +155,15 @@ def get_issues(conn, repo, first_id=1, limit=10):
         issue["body"] = format_body(ticket)
         issue["created_at"] = ticket["createtime"].isoformat()
         issue["updated_at"] = ticket["changetime"].isoformat()
-        # issue["assignee"] = trac_user_get_github_user(ticket["owner"])
         issue["closed"] = (ticket["status"] == 'closed')
         
+        # Assignee must me a member of the organization or by an 
+        # invited collaborator on the repository. 
+        # issue["assignee"] = trac_user_get_github_user(ticket["owner"])
+        
         # Take labels from trac ticket state
+        # Brittleness: Github checks label existence based on 
+        # case-insensitive test, but our map is case-sensitive.
         labels = []
         for k in ["type", "component", "priority", "resolution"]:
             label = trac_label_get_github_label(k, ticket[k], repo)
@@ -176,8 +175,8 @@ def get_issues(conn, repo, first_id=1, limit=10):
         # Ensure milestone exists in github (already, or create it)
         # before applying to the issue
         milestone = trac_milestone_get_github_milestone(ticket["milestone"], conn, repo)
-        # if milestone:
-        #     issue["milestone"] = milestone.title
+        if milestone:
+            issue["milestone"] = milestone.title
         
         # Get comments and attachments in order and add to 
         # the issue
@@ -265,7 +264,9 @@ def github_create_issue(issue_dict):
     return json.loads(r.text)
     
 ###############################################################################
-
+# For the text of comments, etc, we need a user name, and we'll use the 
+# GH one if we can, but settle for the Trac one if we cannot.
+#
 def trac_user_get_github_user(trac_user, fallback_to_trac=False):
     if usermap.get(trac_user):
         return usermap.get(trac_user)
@@ -275,7 +276,11 @@ def trac_user_get_github_user(trac_user, fallback_to_trac=False):
         return github_user
 
 ###############################################################################
-
+# We only want to copy over label information we have pre-configured, this
+# way we can drop information that will just add noise to the tickets.
+# So we check if the requested metadata is in our map, and if it is, see if
+# we have already cached the GH object for it, and if we have, return that.
+#
 def trac_label_get_github_label(trac_key, trac_value, repo):
     # so we can write back new labels
     global labelmap
@@ -334,7 +339,9 @@ def trac_milestone_get_github_milestone(trac_milestone, conn, repo):
 
 
 ###############################################################################
-
+# Read the revision/hash map from the text file we generated during the 
+# SVN->Git process
+#
 def load_revmap(revmapfile):
     d = dict()
     logger.info('loading revmap from %s', revmapfile)
@@ -345,7 +352,9 @@ def load_revmap(revmapfile):
     return d
 
 ###############################################################################
-
+# Read all the existing labels in our repo, so we don't try and
+# re-create them.
+#
 def load_labelmap(repo):
     l = dict()
     for label in repo.get_labels():
@@ -354,6 +363,10 @@ def load_labelmap(repo):
     logger.info('found %d labels', len(l))
     return l
 
+###############################################################################
+# Read all the existing milestones in our repo, so we don't try and
+# re-create them.
+#
 def load_milestonemap(repo):
     m = dict()
     for state in ['open', 'closed']:
@@ -364,7 +377,8 @@ def load_milestonemap(repo):
     return m
 
 ###############################################################################
-
+# Check that all the users in the usermap actually do exist in GH.
+#
 def validate_usermap(hub):
     for tu in usermap:
         gu = usermap[tu]
@@ -376,7 +390,8 @@ def validate_usermap(hub):
                     % (tu, gu))
                 
 ###############################################################################
-
+# Support functions for converting TracWiki syntax to Markdown
+#
 def md_from_trac_url(m):
     if m:
         return "[%s](%s)" % (m.group(2), m.group(1))
@@ -463,7 +478,8 @@ def md_from_trac(s):
     return s
 
 ###############################################################################
-
+# Connect to the trac database. 
+#
 def get_pgsql_connection(config):
     assert logger
     keys = ["dbname", "host", "port", "user", "password", "cursor_factory"]
@@ -523,6 +539,8 @@ def get_trac_milestone(conn, milestone):
         return cur.fetchone()
 
 ###############################################################################
+# Unify the comments/attachments into one record set for easy creation of
+# GitHub comment stream.
 #
 # {
 #  "ticket": 1234, 
