@@ -191,7 +191,7 @@ def get_issues(conn, repo, first_id=1, limit=1):
         # before applying to the issue
         milestone = trac_milestone_get_github_milestone(ticket["milestone"], conn, repo)
         if milestone:
-            issue["milestone"] = milestone.title
+            issue["milestone"] = milestone.number
         
         # Get comments and attachments in order and add to 
         # the issue
@@ -450,6 +450,13 @@ def md_from_trac_revision_lone(m):
             return h
     return None
 
+def md_from_trac_revision_wiki(m):
+    if m:
+        h = revmap.get(m.group(1))
+        if h:
+            return h
+    return None
+
 def md_from_trac(s):
     
     if not s:
@@ -488,6 +495,10 @@ def md_from_trac(s):
     s = p.sub(md_from_trac_revision, s)
     p = re.compile('^r(\d+)$')
     s = p.sub(md_from_trac_revision_lone, s)
+
+    # [changeset:"15743" 15743]:
+    p = re.compile('\[changeset:\"(\d+)\" (\d+)\]')
+    s = p.sub(md_from_trac_revision_wiki, s)
     
     # Newlines
     s = replace(s, "[[br]]", "\n")
