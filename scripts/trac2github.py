@@ -11,6 +11,7 @@ from os.path import basename, splitext, join, isfile
 import StringIO
 import datetime
 import psycopg2
+import json
 from psycopg2.extras import RealDictConnection, RealDictCursor, Json
 from psycopg2.extensions import register_type
 import requests
@@ -22,7 +23,7 @@ import pprint
 
 github_user = "pramsey"
 github_password = os.environ["GITHUB_TOKEN"]
-github_repo = "postgistest"
+github_repo = "postgis-gh"
 github_default_label_color = 'eeeeee'
 
 # svnuser:githubuser
@@ -57,9 +58,9 @@ usermap = {
 traclabelmap = {
     "type":{
         "patch":"Patch",
-        "enhancement":"Enhancement",
+        "enhancement":"enhancement",
         "task":"Task",
-        "defect":"Defect"
+        "defect":"bug"
         },
     "component":{
         "raster":"Raster",
@@ -69,7 +70,6 @@ traclabelmap = {
         "management":"Management",
         "buildbots":"BuildBots",
         "java":"Java",
-        "postgis":"Core",
         "website":"Website",
         "documentation":"Documentation",
         "liblwgeom":"liblwgeom",
@@ -84,7 +84,7 @@ traclabelmap = {
         },
     "resolution":{
         "wontfix":"Won't Fix",
-        "duplicate":"Duplicate",
+        "duplicate":"duplicate",
         "invalid":"Invalid",
         "worksforme":"Works For Me"
         }
@@ -104,8 +104,8 @@ db = {
 
 # For example
 # https://trac.osgeo.org/postgis/attachment/ticket/1666/make_dist_pre2quiet.2.patch
-attachment_url_prefix = "https://trac.osgeo.org/postgis/attachment/ticket/"
-
+attachment_url_tmpl = "https://trac.osgeo.org/postgis/raw-attachment/ticket/%(ticket)s/%(filename)s"
+ticket_url_prefix = "https://trac.osgeo.org/postgis/ticket/"
 
 ###############################################################################
 # GLOBALS
@@ -134,8 +134,10 @@ def main():
     milestonemap = load_milestonemap(repo)
     # validate_usermap(hub)
     
-    for issue in get_issues(conn, repo, first_id=1501, limit=1):
-        logger.info("got issue...")
+    for issue in get_issues(conn, repo, first_id=1, limit=None):
+        r = github_create_issue(issue)
+        logger.info("id:%(id)s status:%(status)s url:%(url)s" % r)
+        
         
     # For each ticket
     # 
@@ -159,7 +161,7 @@ def get_issues(conn, repo, first_id=1, limit=10):
         issue["body"] = format_body(ticket)
         issue["created_at"] = ticket["createtime"].isoformat()
         issue["updated_at"] = ticket["changetime"].isoformat()
-        issue["assignee"] = trac_user_get_github_user(ticket["owner"])
+        # issue["assignee"] = trac_user_get_github_user(ticket["owner"])
         issue["closed"] = (ticket["status"] == 'closed')
         
         # Take labels from trac ticket state
@@ -174,12 +176,12 @@ def get_issues(conn, repo, first_id=1, limit=10):
         # Ensure milestone exists in github (already, or create it)
         # before applying to the issue
         milestone = trac_milestone_get_github_milestone(ticket["milestone"], conn, repo)
-        if milestone:
-            issue["milestone"] = milestone.title
+        # if milestone:
+        #     issue["milestone"] = milestone.title
         
         # Get comments and attachments in order and add to 
         # the issue
-        issue["comments"] = []
+        comments = []
         for state in get_trac_comments_and_attachments(conn, ticket["id"]):
             comment = {}
             comment["created_at"] = state["createtime"].isoformat()
@@ -189,17 +191,21 @@ def get_issues(conn, repo, first_id=1, limit=10):
             # Attachment
             else:
                 comment["body"] = format_attachment(state)
-            issue["comments"].append(comment)
+            comments.append(comment)
+
+        # Compose into a github issue json
+        gh = {"issue": issue, "comments": comments}
 
         # Log result
-        logger.info("Formatted Ticket/Issue #%s" % ticket["id"])
-        logger.debug(pprint.pformat(issue))
-        yield issue
+        logger.info("Formatted Ticket/Issue #%(id)s: %(summary)s" % ticket)
+        logger.debug(pprint.pformat(gh))
+        yield gh
                 
 
 
 def format_body(ticket):
-    md = "**Reported by: %s**\n\n" % trac_user_get_github_user(ticket["reporter"], fallback_to_trac=True)
+    md = "**Reporter: %s**\n" % trac_user_get_github_user(ticket.get("reporter"), fallback_to_trac=True)
+    md += "**Trac URL: %s**\n\n" % (ticket_url_prefix + str(ticket.get("id")))
     md += md_from_trac(ticket["description"])
     return md
         
@@ -209,7 +215,8 @@ def format_comment(state):
     return md
 
 def format_attachment(state):    
-    md = "**Attachment: %s**\n\n" % (attachment_url_prefix + state["filename"])
+    md = "**Author: %s**\n" % trac_user_get_github_user(state["author"], fallback_to_trac=True)
+    md += "**Attachment: %s**\n\n" % (attachment_url_tmpl % state)
     md += md_from_trac(state["description"])
     return md
 
@@ -249,13 +256,13 @@ def github_create_issue(issue_dict):
     url = "https://api.github.com/repos/%s/%s/import/issues" % (github_user, github_repo)
     logger.debug("POST to %s" % url)
     headers = {
-        "Authorization": github_password, 
+        "Authorization": "token " + github_password, 
         "Content-Type": "application/json",
-        "Accept": "vnd.github.golden-comet-preview+json"
+        "Accept": "application/vnd.github.golden-comet-preview+json"
         }
-    r = requests.post("http://httpbin.org/post", data=issue_dict)
-    if args.debug:
-        print(r.text)
+    r = requests.post(url, data=json.dumps(issue_dict), headers=headers)
+    logger.debug(pprint.pformat(r.text))
+    return json.loads(r.text)
     
 ###############################################################################
 
@@ -270,6 +277,8 @@ def trac_user_get_github_user(trac_user, fallback_to_trac=False):
 ###############################################################################
 
 def trac_label_get_github_label(trac_key, trac_value, repo):
+    # so we can write back new labels
+    global labelmap
     
     # Do we have a configuration for this particular
     # trac key/value combination?
@@ -293,22 +302,35 @@ def trac_label_get_github_label(trac_key, trac_value, repo):
     logger.info("Creating new github label: %s" % label)
     # We have a configuration but it doesn't 
     # exist in github yet, so create it there.
-    return repo.create_label(label, color)
+    gh_label = repo.create_label(label, color)
+    labelmap[label] = gh_label
+    return gh_label
 
 
 def trac_milestone_get_github_milestone(trac_milestone, conn, repo):
+    # so we can write back new milestones
+    global milestonemap
+    
+    # reflect None back
+    if not trac_milestone:
+        return None
+    # return already-mapped milestone
     if milestonemap.get(trac_milestone):
         return milestonemap.get(trac_milestone)
-        
+    # read milestone info from database
     ms = get_trac_milestone(conn, trac_milestone)
     if not ms:
-        raise Exception("milestone '%s' not found in trac database" % trac_milestone)
-    
+        return None
+
+    # create github milestone using db info and 
+    # store in global dictionary
     logger.debug(pprint.pformat(ms))
-    if ms["due"]:
-        return repo.create_milestone(title=ms["name"], state=ms["state"], due_on=ms["due"])
-    else:
-        return repo.create_milestone(title=ms["name"], state=ms["state"])
+    due_on = ms.get("due") if ms.get("due") else github.GithubObject.NotSet
+    title = ms.get("name")
+    logger.info("Creating new github milestone: %s" % title)
+    gh_milestone = repo.create_milestone(title=title, state=ms["state"], due_on=due_on)
+    milestonemap[title] = gh_milestone
+    return gh_milestone
 
 
 ###############################################################################
@@ -372,15 +394,13 @@ def md_from_trac_revision(m):
         h = revmap.get(m.group(2))
         if h:
             return m.group(1)+h+m.group(3)
-    
     return None
 
 def md_from_trac_revision_first(m):
     if m:
         h = revmap.get(m.group(1))
         if h:
-            return h+m.group(2)
-    
+            return h+m.group(2)    
     return None
 
 def md_from_trac_revision_last(m):
@@ -388,11 +408,20 @@ def md_from_trac_revision_last(m):
         h = revmap.get(m.group(2))
         if h:
             return m.group(1)+h
-    
+    return None
+
+def md_from_trac_revision_lone(m):
+    if m:
+        h = revmap.get(m.group(1))
+        if h:
+            return h
     return None
 
 def md_from_trac(s):
     
+    if not s:
+        return ""
+        
     # Simple tracwiki formatting
     s = replace(s, "'''", "**")
     s = replace(s, "''", "*")
@@ -408,9 +437,14 @@ def md_from_trac(s):
     p = re.compile('<i>(.*?)<\/i>', re.IGNORECASE)
     s = p.sub(md_from_trac_italic, s)
     
+    # Headers
+    s = re.sub("^=== ", "### ", s)
+    s = re.sub("^== ", "## ", s)
+    s = re.sub("^= ", "# ", s)
+    
     # Leading/trailing space
     s = re.sub("^\s*", "", s)
-    s = re.sub("\s$", "", s)
+    s = re.sub("\s*$", "", s)
     
     # Revision numbers
     p = re.compile('(\s)r(\d+)$')
@@ -419,6 +453,12 @@ def md_from_trac(s):
     s = p.sub(md_from_trac_revision_first, s)
     p = re.compile('(\s)r(\d+)(\W)')
     s = p.sub(md_from_trac_revision, s)
+    p = re.compile('^r(\d+)$')
+    s = p.sub(md_from_trac_revision_lone, s)
+    
+    # Newlines
+    s = replace(s, "[[br]]", "\n")
+    s = replace(s, "\\\\", "\n")
     
     return s
 
