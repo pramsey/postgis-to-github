@@ -1,7 +1,6 @@
 import sys
 import re
 import csv
-import ConfigParser
 import github
 import logging
 import argparse
@@ -26,7 +25,9 @@ github_password = os.environ["GITHUB_TOKEN"]
 github_repo = "postgis-gh"
 github_default_label_color = 'eeeeee'
 
+#
 # svnuser:githubuser
+#
 usermap = {
     "pramsey":"pramsey",
     "robe":"robe2",
@@ -54,7 +55,21 @@ usermap = {
     "bjornharrtell":"bjornharrtell"
     }
 
-# from trac field/value to github label name
+#
+# Maps from trac field/value to github label name.
+#
+# Only map those combinations that really make sense. You
+# probably don't want to map a label that will end up on 
+# 95% of the tickets, since that doesn't provide any
+# useful information.
+#
+# You can add colors after each GH tag name, see the hex
+# colors below in the "priority" section. Using multi-word
+# labels might be a bad idea, because they are harder to 
+# type into the advanced search box on GH, but it might 
+# be good because they are easier to read, and people use
+# the dropdown lists a lot.
+#
 traclabelmap = {
     "type":{
         "patch":"Patch",
@@ -90,7 +105,7 @@ traclabelmap = {
         }
     }
 
-    
+
 revmapfile = "/Users/pramsey/Code/postgis-to-github/work/rev-lookup.txt"
 
 db = {
